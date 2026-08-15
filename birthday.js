@@ -1,7 +1,22 @@
 /* ============================================================
-   HAPPY BIRTHDAY — a birthday film in four acts + wish cards
-   Arrow angle preserved: rotation is explicitly reset on every
-   positioning call so the arrow never tilts off the bow axis.
+   HAPPY BIRTHDAY — a birthday film in four acts
+   Vanilla canvas 2D for the tree + GSAP for the orchestration.
+
+   ACT 1  a real recurve bow with a Cupid's arrow nocked — you
+          DRAW the string down and RELEASE to fire (pointer drag,
+          or keyboard). A softly beating heart waits above as the
+          target.
+   ACT 2  the arrow flies up and strikes the heart; the heart
+          jolts, falls, and bursts into a flood of rose that
+          swallows the frame (no cross-fade).
+   ACT 3  a kinetic wish hinges up out of that colour, glyph by
+          glyph, under cinema bars and a slow camera push.
+   ACT 4  a gold light blooms, and the tree grows into one heart
+          of lit blossoms with the hand-lettered wish.
+
+   A GSAP master timeline runs the shot + Acts 2–3; at its end it
+   starts the canvas tree (Act 4), which owns its own rAF and
+   plays once, then holds — living, never looping.
    ============================================================ */
 
 import gsap from 'gsap';
@@ -23,6 +38,14 @@ const $ = (id) => document.getElementById(id);
 
 const canvas = $('tree');
 const ctx    = canvas.getContext('2d');
+
+/* cursor position in canvas coords, for the petals' gentle mouse-repulsion */
+let mouseX = -9999, mouseY = -9999, mouseActive = false;
+canvas.addEventListener('pointermove', (e) => {
+  const r = canvas.getBoundingClientRect();
+  mouseX = e.clientX - r.left; mouseY = e.clientY - r.top; mouseActive = true;
+});
+canvas.addEventListener('pointerleave', () => { mouseActive = false; });
 const wishEl = $('wish');
 
 const hero       = $('hero');
@@ -53,22 +76,31 @@ const uline   = $('uline').querySelector('.uline__path');
 const bloom   = $('bloom');
 const replay  = $('replay');
 
-/* NEW: Cards & ambient */
-const openWishesBtn = $('openWishes');
-const cardsStage    = $('cardsStage');
-const cardsBackdrop = $('cardsBackdrop');
-const cardsClose    = $('cardsClose');
-const cardsTrack    = $('cardsTrack');
-const cardsPrev     = $('cardsPrev');
-const cardsNext     = $('cardsNext');
-const cardsDots     = $('cardsDots');
-const ambientCanvas = $('ambient');
-const actx = ambientCanvas ? ambientCanvas.getContext('2d') : null;
+const gate         = $('gate');
+const musicToggle  = $('musicToggle');
+const bgm          = $('bgm');
+const memoriesBtn  = $('memoriesBtn');
+const memories     = $('memories');
+const memoriesClose= $('memoriesClose');
+
+const loveHint  = $('loveHint');
+const loveNote  = $('loveNote');
+const loveNoteText = $('loveNoteText');
+const starEl    = $('star');
+const wishBtn   = $('wishBtn');
+const shuffleCard = $('shuffleCard');
+const shuffleText = $('shuffleText');
+const shuffleBtn  = $('shuffleBtn');
+const envelope    = $('envelope');
+const letterEl    = $('letter');
+const letterText  = $('letterText');
 
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const isRecord     = new URLSearchParams(location.search).has('record');
 
-/* --- cue log for the recorder --- */
+/* --- cue log for the recorder: the page stays muted, but it timestamps every
+   beat the film crosses, and the offline sound synth fires foley at those exact
+   times so the audio can never drift from the picture. --- */
 if (isRecord) window.bdayCues = [];
 let recT0 = 0;
 function cue(name){ if (isRecord && recT0) window.bdayCues.push({ cue: name, t: (performance.now() - recT0) / 1000 }); }
@@ -91,94 +123,6 @@ function shade(hex, amt){
 }
 
 /* ============================================================
-   AMBIENT FLOATING HEARTS (extra animation layer)
-   ============================================================ */
-let ambW = 0, ambH = 0, ambDPR = 1;
-let ambHearts = [];
-const AMB_COLORS = ['#ff8fab', '#ffb3c6', '#ffc8dd', '#ffe5ec', '#ffd6a5', '#ffcdb2'];
-
-function resizeAmbient(){
-  if (!ambientCanvas) return;
-  ambDPR = Math.min(window.devicePixelRatio || 1, 2);
-  ambW = ambientCanvas.clientWidth;
-  ambH = ambientCanvas.clientHeight;
-  ambientCanvas.width = Math.round(ambW * ambDPR);
-  ambientCanvas.height = Math.round(ambH * ambDPR);
-  actx.setTransform(ambDPR, 0, 0, ambDPR, 0, 0);
-}
-
-function buildAmbientHearts(){
-  ambHearts = [];
-  const count = Math.floor((ambW * ambH) / 25000);
-  for (let i = 0; i < count; i++){
-    ambHearts.push({
-      x: rand(0, ambW),
-      y: rand(ambH + 20, ambH + 200),
-      size: rand(6, 18),
-      vy: rand(-6, -16),
-      vx: rand(-2, 2),
-      sway: rand(8, 24),
-      phase: rand(0, 6.28),
-      color: pick(AMB_COLORS),
-      alpha: rand(0.12, 0.38),
-      rot: rand(0, 6.28),
-      vrot: rand(-0.4, 0.4),
-    });
-  }
-}
-
-function drawAmbHeart(c, x, y, s, rot, color, alpha){
-  c.save();
-  c.translate(x, y);
-  c.rotate(rot);
-  c.globalAlpha = alpha;
-  c.fillStyle = color;
-  c.beginPath();
-  const top = -s * 0.5;
-  const h = s;
-  const w = s * 0.9;
-  c.moveTo(0, top + h * 0.25);
-  c.bezierCurveTo(0, top, -w * 0.5, top, -w * 0.5, top + h * 0.25);
-  c.bezierCurveTo(-w * 0.5, top + h * 0.55, -w * 0.16, top + h * 0.75, 0, top + h * 0.95);
-  c.bezierCurveTo(w * 0.16, top + h * 0.75, w * 0.5, top + h * 0.55, w * 0.5, top + h * 0.25);
-  c.bezierCurveTo(w * 0.5, top, 0, top, 0, top + h * 0.25);
-  c.closePath();
-  c.fill();
-  c.restore();
-}
-
-let ambRAF = 0, ambLast = 0;
-function ambientFrame(now){
-  if (!actx) return;
-  const dt = Math.min(0.05, (now - ambLast) / 1000);
-  ambLast = now;
-  actx.clearRect(0, 0, ambW, ambH);
-  for (const h of ambHearts){
-    h.y += h.vy * dt;
-    h.x += Math.sin(now * 0.001 * 0.6 + h.phase) * h.sway * dt;
-    h.rot += h.vrot * dt;
-    if (h.y < -h.size * 2){
-      h.y = ambH + h.size * 2;
-      h.x = rand(0, ambW);
-    }
-    drawAmbHeart(actx, h.x, h.y, h.size, h.rot, h.color, h.alpha);
-  }
-  ambRAF = requestAnimationFrame(ambientFrame);
-}
-
-function ambientStart(){
-  if (!actx || ambRAF) return;
-  resizeAmbient();
-  buildAmbientHearts();
-  ambLast = performance.now();
-  ambRAF = requestAnimationFrame(ambientFrame);
-}
-function ambientStop(){
-  if (ambRAF){ cancelAnimationFrame(ambRAF); ambRAF = 0; }
-  if (actx) actx.clearRect(0, 0, ambW, ambH);
-}
-
-/* ============================================================
    TREE ENGINE (Act 4) — canvas
    ============================================================ */
 const BLOSSOM = [
@@ -190,6 +134,7 @@ const BLOSSOM = [
   { c0: '#ffd2e6', c1: '#e84d9a' },
 ];
 
+/* timeline (seconds, relative to the tree's own start) — brisk */
 const T = {
   trunkStart: 0.10,
   branchSpan: 1.80,
@@ -542,6 +487,13 @@ function spawnPetal(){
 function drawPetals(t, dt){
   for (let i = petals.length - 1; i >= 0; i--){
     const p = petals[i]; p.age += dt; p.vy += 8 * dt;
+    if (mouseActive){
+      const dx = p.x - mouseX, dy = p.y - mouseY, d2 = dx * dx + dy * dy, R = 90;
+      if (d2 < R * R && d2 > 1){
+        const d = Math.sqrt(d2), push = (1 - d / R) * 70;
+        p.x += (dx / d) * push * dt; p.y += (dy / d) * push * dt; p.vrot += (dx / d) * dt * 2;
+      }
+    }
     p.x += (p.vx + Math.sin(t * p.sway + p.phase) * 16) * dt;
     p.y += p.vy * dt; p.rot += p.vrot * dt;
     if (p.y >= p.land){
@@ -559,9 +511,30 @@ function drawRested(){
 
 function showWish(on){ wishEl.classList.toggle('is-in', on); }
 
+/* a quick DOM confetti/sparkle burst — fires once, right as the tree finishes
+   blooming. Small gold + rose flecks, gravity-eased, self-removing. */
+function burstConfetti(){
+  if (reduceMotion) return;
+  const colors = ['#ffcf6a', '#ff6f97', '#d4235c', '#ffe38c', '#fff3ea'];
+  const cx = W / 2, cy = H * 0.38;
+  for (let i = 0; i < 34; i++){
+    const el = document.createElement('span');
+    const size = rand(5, 10);
+    el.style.cssText = `position:absolute;left:${cx}px;top:${cy}px;width:${size}px;height:${size}px;
+      border-radius:${Math.random() < 0.5 ? '50%' : '2px'};background:${pick(colors)};
+      pointer-events:none;z-index:8;opacity:0.95;will-change:transform,opacity;`;
+    canvas.parentElement.appendChild(el);
+    const ang = rand(0, Math.PI * 2), dist = rand(80, 260);
+    gsap.to(el, {
+      x: Math.cos(ang) * dist, y: Math.sin(ang) * dist * 0.7 + rand(60, 140),
+      rotation: rand(-260, 260), opacity: 0, duration: rand(1.1, 1.9), ease: 'power2.out',
+      onComplete: () => el.remove(),
+    });
+  }
+}
+
 /* the tree's own rAF: plays once from treeStart(), then holds, living */
 let treeStartT = 0, treeLastT = 0, treeRAF = 0, lastPetal = 0, replayArmed = false;
-let wishesArmed = false;
 window.bdayDone = false;
 
 function treeFrame(now){
@@ -586,15 +559,14 @@ function treeFrame(now){
 
   showWish(t >= T.noteStart);
 
-  if (!window.bdayDone && t >= T.done) window.bdayDone = true;
+  if (!window.bdayDone && t >= T.done){ window.bdayDone = true; burstConfetti(); }
   if (!replayArmed && t >= T.done + 1.0){ replayArmed = true; armReplay(); }
-  if (!wishesArmed && t >= T.done + 2.2){ wishesArmed = true; armOpenWishes(); }
 
   treeRAF = requestAnimationFrame(treeFrame);
 }
 
 function treeStart(){
-  treeStartT = 0; treeLastT = 0; lastPetal = 0; replayArmed = false; wishesArmed = false; window.bdayDone = false;
+  treeStartT = 0; treeLastT = 0; lastPetal = 0; replayArmed = false; window.bdayDone = false;
   cue('grow');
   buildScene();
   if (!treeRAF) treeRAF = requestAnimationFrame(treeFrame);
@@ -618,6 +590,7 @@ function drawFinal(){
    ACTS 1–3 (GSAP) — the bow, the shot, the wish
    ============================================================ */
 
+/* the two headline words become per-glyph spans so each hinges up on its own */
 function splitWord(el){
   const chars = [...el.textContent];
   el.textContent = '';
@@ -633,6 +606,7 @@ const line1Chars = splitWord($('wLine1'));
 const line2Chars = splitWord($('wLine2'));
 const kChars = [...line1Chars, ...line2Chars];
 
+/* drifting light motes behind the scene */
 function buildMotes(){
   motes.innerHTML = '';
   for (let i = 0; i < 12; i++){
@@ -649,14 +623,16 @@ function buildMotes(){
   }
 }
 
-/* --- bow geometry ---------------------------------------------------------
-   The rig is rotated so local -Y points at the heart. The arrow lives inside
-   the rig and must stay parallel to that axis at all times: rotation is
-   hard-kept at 0 so the arrow never tilts off the aim line. */
+/* --- bow geometry (measured; re-measured on resize) -------------------------
+   The rig lives lower-left and is rotated so its local "up" axis points at the
+   heart; the shot therefore travels on a diagonal. The draw + arrow math all
+   live in the rig's LOCAL space (offset geometry is transform-independent, so
+   rotation never corrupts it); only the aim ANGLE and the flight DISTANCE come
+   from screen measurements. */
 const tip = $('tip');
 let svgScale = 1, arrowBaseX = 0, arrowBaseY = 0, maxDraw = 120, curDraw = 0;
-let pullUX = 0, pullUY = 1;
-const REST_NOCK = 96;
+let pullUX = 0, pullUY = 1;                               // screen unit: string pull-back
+const REST_NOCK = 96;                                    // string nock, in bow viewBox units
 const nockProxy = { val: REST_NOCK };
 
 function applyNock(){
@@ -665,37 +641,486 @@ function applyNock(){
 }
 
 function refreshRig(){
+  // the grip is anchored here, and the heart sits at its layout centre (33% down,
+  // centred) — using the layout point, not a live rect, keeps the aim steady even
+  // while the heart is scaling in.
   const gripX = W * 0.24, gripY = H * 0.76;
   const heartX = W * 0.5, heartY = H * 0.33;
+  // rotation so local "up" (0,-1) maps to the grip→heart direction
   const aimRad = Math.atan2(heartX - gripX, gripY - heartY);
-  pullUX = -Math.sin(aimRad); pullUY = Math.cos(aimRad);
+  pullUX = -Math.sin(aimRad); pullUY = Math.cos(aimRad);  // opposite of aim = pull-back
 
+  // #bow / #arrow are SVG — no offset* — so measure rects in the rig's LOCAL
+  // frame: neutralise the rig transform first (getBBox-style, sync, no paint).
   nockProxy.val = REST_NOCK; applyNock();
   gsap.set(archery, { rotation: 0, scale: 1, x: 0, y: 0 });
   archery.style.left = '0px'; archery.style.top = '0px';
-  /* CRITICAL: reset arrow rotation so it stays parallel to the bow axis */
-  gsap.set(arrow, { x: 0, y: 0, rotation: 0 });
+  gsap.set(arrow, { x: 0, y: 0 });
   const aR = archery.getBoundingClientRect();
   const bR = bow.getBoundingClientRect();
   const sR = serving.getBoundingClientRect();
   const rR = arrow.getBoundingClientRect();
   svgScale = bR.width / 460;
   const gripLX = (bR.left - aR.left) + 0.5 * bR.width;
-  const gripLY = (bR.top  - aR.top ) + (240 / 300) * bR.height;
+  const gripLY = (bR.top  - aR.top ) + (240 / 300) * bR.height;   // grip ~y240 in viewBox
   const nockLX = (sR.left - aR.left) + 0.5 * sR.width;
   const nockLY = (sR.top  - aR.top ) + 0.5 * sR.height;
   arrowBaseX = nockLX - ((rR.left - aR.left) + 0.5 * rR.width);
   arrowBaseY = nockLY - ((rR.top  - aR.top ) + (205 / 220) * rR.height);
 
+  // anchor the grip at (gripX,gripY) and rotate the rig around it
   archery.style.left = (gripX - gripLX) + 'px';
   archery.style.top  = (gripY - gripLY) + 'px';
   gsap.set(archery, { transformOrigin: `${gripLX}px ${gripLY}px`, rotation: aimRad * 180 / Math.PI });
-  /* Position arrow at rest with explicit rotation:0 so it never tilts */
-  gsap.set(arrow, { x: arrowBaseX, y: arrowBaseY, rotation: 0 });
+  gsap.set(arrow, { x: arrowBaseX, y: arrowBaseY });
   maxDraw = Math.min(bR.height * 0.72, H * 0.16, 132);
   curDraw = 0;
 }
 
 function setDraw(d){
   curDraw = clamp(d, 0, maxDraw);
-  
+  gsap.set(arrow, { x: arrowBaseX, y: arrowBaseY + curDraw });   // local +Y = pull back
+  nockProxy.val = REST_NOCK + curDraw / svgScale; applyNock();
+  gsap.set(aim, { opacity: 0.55 * (curDraw / maxDraw) });
+}
+
+/* the target heart's beat — gentle, alive; killed the instant we fire */
+let beatTL = null;
+function startBeat(){
+  gsap.set(targetHeart, { scale: 1 });
+  gsap.set(heartGlow, { scale: 1, opacity: 0.7 });
+  beatTL = gsap.timeline({ repeat: -1, repeatDelay: 0.5 });
+  beatTL.to(targetHeart, { scale: 1.07, duration: 0.13, ease: 'power2.out' }, 0)
+        .to(heartGlow,   { scale: 1.15, opacity: 0.9, duration: 0.13, ease: 'power2.out' }, 0)
+        .to(targetHeart, { scale: 1.0, duration: 0.2, ease: 'power2.in' }, 0.13)
+        .to(targetHeart, { scale: 1.05, duration: 0.12, ease: 'power2.out' }, 0.3)
+        .to(targetHeart, { scale: 1.0, duration: 0.5, ease: 'power2.inOut' }, 0.42)
+        .to(heartGlow,   { scale: 1.0, opacity: 0.7, duration: 0.7, ease: 'power2.inOut' }, 0.3);
+}
+function stopBeat(){ if (beatTL){ beatTL.kill(); beatTL = null; } gsap.set(targetHeart, { scale: 1 }); }
+
+/* a little burst of hearts + sparks where the arrow strikes */
+function miniHeartSVG(fill){
+  return `<svg viewBox="0 0 24 22" width="100%" height="100%"><path d="M12 20C5.5 15 1.5 11.4 1.5 6.9 1.5 3.6 4 1.5 7 1.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3 0 5.5 2.1 5.5 5.4C23.5 11.4 19.5 15 12 20Z" fill="${fill}"/></svg>`;
+}
+function burstHearts(){
+  const r = target.getBoundingClientRect();
+  const hr = hero.getBoundingClientRect();
+  const ox = r.left - hr.left + r.width / 2;
+  const oy = r.top - hr.top + r.height * 0.42;
+  const cols = ['#ff6f97', '#ffb14e', '#ff8fae', '#ffd36a', '#e23b67'];
+  const frag = document.createDocumentFragment();
+  const nodes = [];
+  for (let i = 0; i < 12; i++){
+    const heart = i < 8;
+    const el = document.createElement('span');
+    el.className = 'burst';
+    const s = heart ? rand(12, 22) : rand(4, 8);
+    el.style.cssText = `position:absolute;left:${ox}px;top:${oy}px;width:${s}px;height:${s}px;margin:${-s / 2}px 0 0 ${-s / 2}px;pointer-events:none;z-index:4;`;
+    if (heart) el.innerHTML = miniHeartSVG(pick(cols));
+    else { el.style.borderRadius = '50%'; el.style.background = 'radial-gradient(circle,#fff,rgba(255,210,150,0) 70%)'; }
+    frag.appendChild(el); nodes.push({ el, heart });
+  }
+  hero.appendChild(frag);
+  nodes.forEach(({ el, heart }) => {
+    const ang = rand(-Math.PI, 0);                       // fan upward + out
+    const dist = rand(heart ? 70 : 40, heart ? 190 : 120);
+    gsap.to(el, {
+      x: Math.cos(ang) * dist, y: Math.sin(ang) * dist - rand(10, 50),
+      rotation: rand(-120, 120), scale: heart ? rand(0.7, 1.2) : rand(0.4, 1),
+      duration: rand(0.7, 1.15), ease: 'power2.out',
+    });
+    gsap.to(el, { opacity: 0, duration: 0.5, delay: rand(0.35, 0.6), ease: 'power1.in', onComplete: () => el.remove() });
+  });
+}
+
+/* --- the shot + Acts 2–3 timeline ------------------------------------------ */
+function shotGeom(){
+  // flight distance = straight-line from the arrow tip to the heart (measured on
+  // screen, rotation-aware). Moving the arrow that far along its local "up" axis
+  // — which is aimed at the heart — lands the tip dead-centre on it.
+  const tipR = tip.getBoundingClientRect();
+  const tRect = target.getBoundingClientRect();
+  const tipX = tipR.left + tipR.width / 2, tipY = tipR.top + tipR.height / 2;
+  const tcx = tRect.left + tRect.width / 2, tcy = tRect.top + tRect.height / 2;
+  const flightDist = Math.hypot(tcx - tipX, tcy - tipY);
+  const fallPx = Math.min(H * 0.26, H - tcy - tRect.height * 0.4);
+  const impactX = tcx, impactY = tcy + fallPx;
+  const distC = Math.hypot(Math.max(impactX, W - impactX), Math.max(impactY, H - impactY));
+  const reach = Math.hypot(W / 2, H / 2);
+  return {
+    arrowStartY: arrowBaseY + curDraw,
+    arrowFlyY:   arrowBaseY + curDraw - flightDist,       // local -Y = toward the heart
+    drawnNock:   REST_NOCK + curDraw / svgScale,
+    fallPx, fx: impactX - W / 2, fy: impactY - H / 2,
+    floodScale: (distC * 1.12) / 70, bloomScale: (reach * 1.2) / 30,
+  };
+}
+
+let filmTL = null;
+function buildFilm(m){
+  const t = gsap.timeline({
+    paused: true,
+    onComplete: () => {
+      gsap.set(field, { autoAlpha: 0 });
+      treeStart();
+      // fade promptly so the growing tree is revealed with no white hold
+      gsap.to(bloom, { autoAlpha: 0, duration: 1.15, ease: 'power2.out' });
+    },
+  });
+
+  // reset (t=0)
+  t.set(target, { y: 0, scaleX: 1, scaleY: 1, opacity: 1 })
+   .set(arrow, { opacity: 1, x: arrowBaseX, y: m.arrowStartY, scaleY: 1 })
+   .set([flood, bloom], { autoAlpha: 0, scale: 0.001, x: 0, y: 0 })
+   .set(flood, { x: m.fx, y: m.fy })
+   .set(field, { autoAlpha: 0 })
+   .set('.blob', { opacity: 0 })
+   .set(camera, { scale: 1, yPercent: 0 })
+   .set(fgrid, { xPercent: 0, yPercent: 0 })
+   .set(barTop, { yPercent: -100 })
+   .set(barBot, { yPercent: 100 })
+   .set(kEyebrow, { opacity: 0, y: 12 })
+   .set(kSub, { opacity: 0, y: 12 })
+   .set(kChars, { transformPerspective: 620, transformOrigin: '50% 100%', yPercent: 135, rotationX: -82 })
+   .set(uline, { drawn: 0 });
+
+  // --- the shot: string snaps (twang), arrow flies up into the heart --------
+  t.fromTo(nockProxy, { val: m.drawnNock }, { val: REST_NOCK, duration: 0.5, ease: 'elastic.out(1,0.34)', onUpdate: applyNock }, 0)
+   .to(arrow, { y: m.arrowFlyY, duration: 0.26, ease: 'power2.in' }, 0)
+   .to(arrow, { scaleY: 1.16, duration: 0.14, ease: 'power2.in' }, 0)
+   .to(arrow, { scaleY: 1.0, duration: 0.1, ease: 'power1.out' }, 0.16)
+   .to(aim, { opacity: 0, duration: 0.18 }, 0)
+   .to([eyebrow, hint], { opacity: 0, duration: 0.2, ease: 'power1.out' }, 0);
+
+  // --- the strike: the arrow embeds, the heart recoils, then holds pierced --
+  t.add(burstHearts, 0.26)
+   // recoil along the arrow's line (up + right), springing back
+   .to(target, { x: 7, y: -9, duration: 0.06, ease: 'power2.out' }, 0.26)
+   .to(target, { x: 0, y: 0, duration: 0.32, ease: 'power2.out' }, 0.32)
+   .to(target, { scale: 1.14, duration: 0.06, ease: 'power2.out' }, 0.26)
+   .to(target, { scale: 1.0, duration: 0.26, ease: 'power2.inOut' }, 0.32)
+   // the arrow shudders in the wound, holds embedded so the hit reads, then sinks in
+   .to(arrow, { rotation: '+=4', duration: 0.05, yoyo: true, repeat: 4, ease: 'sine.inOut' }, 0.27)
+   .set(arrow, { rotation: 0 }, 0.52)
+   .to(arrow, { opacity: 0, duration: 0.16, ease: 'power1.out' }, 0.56);
+
+  // --- the fall + the burst / flood -----------------------------------------
+  t.to(target, { y: m.fallPx, scaleX: 0.84, scaleY: 1.3, duration: 0.34, ease: 'power1.in' }, 0.64)
+   .to(target, { scaleX: 1.4, scaleY: 0.6, duration: 0.07, ease: 'power2.out' }, 0.98)
+   .set(flood, { autoAlpha: 1 }, 1.00)
+   .fromTo(flood, { scale: 0.02 }, { scale: m.floodScale, duration: 0.34, ease: 'power2.in' }, 1.00)
+   .to(target, { opacity: 0, duration: 0.12, ease: 'power1.out' }, 1.06);
+
+  // seam: the field is the same rose as the flood
+  t.set(field, { autoAlpha: 1 }, 1.32)
+   .set(hero, { autoAlpha: 0 }, 1.33)
+   .to('.blob', { opacity: 1, duration: 0.6, ease: 'power2.out' }, 1.34)
+   .set(flood, { autoAlpha: 0 }, 1.36);
+
+  // --- the camera push -------------------------------------------------------
+  // duration matched to when the bloom covers (3.98) — a longer push used to
+  // keep the timeline (and a white bloom) alive after the tree should already
+  // be growing, which read as dead time before the tree appeared.
+  t.fromTo(camera, { scale: 1.0, yPercent: 0 }, { scale: 1.07, yPercent: -1.3, duration: 2.6, ease: 'none' }, 1.38)
+   .fromTo(fgrid, { xPercent: 0, yPercent: 0 }, { xPercent: -1.5, yPercent: -1.0, duration: 2.6, ease: 'none' }, 1.38);
+
+  // beat markers for the recorder's soundtrack (no-ops off ?record)
+  t.call(cue, ['hit'], 0.26)
+   .call(cue, ['flood'], 1.00)
+   .call(cue, ['wish'], 1.68)
+   .call(cue, ['wish2'], 2.06)
+   .call(cue, ['bloom'], 3.42);
+
+  // cinema bars ease into a letterbox
+  t.to(barTop, { yPercent: 0, duration: 0.6, ease: 'power2.out' }, 1.5)
+   .to(barBot, { yPercent: 0, duration: 0.6, ease: 'power2.out' }, 1.5);
+
+  // --- the kinetic wish ------------------------------------------------------
+  t.to(kEyebrow, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 1.54)
+   .to(line1Chars, { yPercent: 0, rotationX: 0, duration: 0.55, ease: 'power3.out', stagger: 0.033 }, 1.68)
+   .to(line2Chars, { yPercent: 0, rotationX: 0, duration: 0.55, ease: 'power3.out', stagger: 0.033 }, 2.06)
+   .to(uline, { drawn: 1, duration: 0.45, ease: 'power2.inOut' }, 2.54)
+   .to(kSub, { opacity: 1, y: 0, duration: 0.45, ease: 'power3.out' }, 2.74);
+
+  // --- the handoff bloom -----------------------------------------------------
+  t.to(barTop, { yPercent: -100, duration: 0.5, ease: 'power2.in' }, 3.32)
+   .to(barBot, { yPercent: 100, duration: 0.5, ease: 'power2.in' }, 3.32)
+   .set(bloom, { autoAlpha: 1 }, 3.42)
+   .fromTo(bloom, { scale: 0.02 }, { scale: m.bloomScale, duration: 0.58, ease: 'power2.in' }, 3.42);
+
+  return t;
+}
+
+/* --- draw / release interaction -------------------------------------------- */
+let played = false, drawing = false, startPX = 0, startPY = 0, startDraw = 0;
+
+function fire(){
+  if (played) return;
+  played = true;
+  drawing = false;
+  stopBeat();
+  cue('release'); cue('whoosh');
+  filmTL = buildFilm(shotGeom());
+  filmTL.play(0);
+}
+
+function springBack(){
+  const from = curDraw;
+  gsap.to({ d: from }, { d: 0, duration: 0.55, ease: 'elastic.out(1,0.4)', onUpdate() { setDraw(this.targets()[0].d); } });
+}
+
+function autoFire(){
+  if (played) return;
+  recT0 = performance.now(); cue('draw');       // t=0 of the soundtrack
+  gsap.to({ d: curDraw }, {
+    d: maxDraw * 0.94, duration: 0.62, ease: 'power2.inOut',
+    onUpdate() { setDraw(this.targets()[0].d); },
+    onComplete: () => gsap.delayedCall(0.16, fire),
+  });
+}
+
+archery.addEventListener('pointerdown', (e) => {
+  if (played) return;
+  drawing = true;
+  try { archery.setPointerCapture(e.pointerId); } catch (_) {}
+  startPX = e.clientX; startPY = e.clientY; startDraw = curDraw;
+  e.preventDefault();
+});
+archery.addEventListener('pointermove', (e) => {
+  if (!drawing) return;
+  // project the drag onto the pull-back axis, so dragging back along the aim
+  // (down + away from the heart) draws the string — on any shot angle.
+  const proj = (e.clientX - startPX) * pullUX + (e.clientY - startPY) * pullUY;
+  setDraw(startDraw + proj);
+});
+function endDraw(){
+  if (!drawing) return;
+  drawing = false;
+  if (curDraw > maxDraw * 0.26) fire(); else springBack();
+}
+archery.addEventListener('pointerup', endDraw);
+archery.addEventListener('pointercancel', endDraw);
+archery.addEventListener('keydown', (e) => {
+  if (played) return;
+  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); autoFire(); }
+});
+
+/* boot Act 1: reveal the target + bow + hint, then start the beat */
+function enter(){
+  gsap.set(hero, { autoAlpha: 1 });
+  refreshRig();
+  setDraw(0);
+  gsap.set([eyebrow, hint], { opacity: 0, y: 14 });
+  gsap.set(target, { opacity: 0, y: 10, scaleX: 0.9, scaleY: 0.9 });
+  gsap.set(archery, { opacity: 0, scale: 0.85 });        // scale from the grip; keeps rotation
+  gsap.set(heartGlow, { opacity: 0, scale: 1 });
+  gsap.set(arrow, { opacity: 1 });
+
+  const tl = gsap.timeline({ onComplete: startBeat });
+  tl.to(target,   { opacity: 1, y: 0, scaleX: 1, scaleY: 1, duration: 0.8, ease: 'power3.out' }, 0.1)
+    .to(heartGlow,{ opacity: 0.7, duration: 0.8, ease: 'power2.out' }, 0.2)
+    .to(archery,  { opacity: 1, scale: 1, duration: 0.8, ease: 'power3.out' }, 0.28)
+    .to(eyebrow,  { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 0.4)
+    .to(hint,     { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out' }, 0.7);
+}
+
+function armReplay(){
+  replay.hidden = false;
+  requestAnimationFrame(() => replay.classList.add('is-shown'));
+  requestAnimationFrame(() => { musicToggle.classList.add('is-shown'); memoriesBtn.classList.add('is-shown'); });
+  memoriesBtn.hidden = false;
+}
+
+/* back to Act 1, ready to be drawn again */
+function resetAll(){
+  treeStop();
+  showWish(false);
+  window.bdayDone = false; replayArmed = false;
+  replay.classList.remove('is-shown'); replay.hidden = true;
+  memoriesBtn.classList.remove('is-shown'); memoriesBtn.hidden = true;
+  if (filmTL){ filmTL.pause(0); }
+  gsap.set([flood, bloom], { autoAlpha: 0 });
+  gsap.set(field, { autoAlpha: 0 });
+  gsap.set(arrow, { opacity: 1, scaleY: 1 });
+  played = false;
+  enter();
+}
+
+/* ============================================================
+   SIZING + BOOT
+   ============================================================ */
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildSprites();
+  buildScene();
+  if (reduceMotion){ drawFinal(); return; }
+  if (played && filmTL){
+    const at = filmTL.time(); const active = filmTL.isActive();
+    filmTL = buildFilm(shotGeom());
+    filmTL.pause(at);
+    if (active) filmTL.play(at);
+  } else {
+    refreshRig(); setDraw(0);
+  }
+}
+let resizeRAF = 0;
+window.addEventListener('resize', () => { if (resizeRAF) return; resizeRAF = requestAnimationFrame(() => { resizeRAF = 0; resize(); }); });
+
+resize();
+
+function openGate(){
+  gate.classList.add('is-open');
+  gate.removeEventListener('click', openGate);
+  gate.removeEventListener('keydown', gateKey);
+  setTimeout(enter, 480);
+}
+function gateKey(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openGate(); } }
+
+if (reduceMotion){
+  document.documentElement.classList.add('no-gate');
+  drawFinal();
+} else {
+  buildMotes();
+  document.fonts && document.fonts.ready.then(() => { refreshRig(); setDraw(0); });
+  if (isRecord){ document.documentElement.classList.add('no-gate'); enter(); }
+  else {
+    gate.addEventListener('click', openGate);
+    gate.addEventListener('keydown', gateKey);
+  }
+  replay.addEventListener('click', resetAll);
+}
+
+/* music toggle — plays/pauses the optional /audio/theme.mp3 track */
+musicToggle.addEventListener('click', () => {
+  const on = musicToggle.getAttribute('aria-pressed') === 'true';
+  if (on){ bgm.pause(); musicToggle.setAttribute('aria-pressed', 'false'); }
+  else { bgm.play().catch(() => {}); musicToggle.setAttribute('aria-pressed', 'true'); }
+});
+
+/* memory lane + message wall overlay */
+memoriesBtn.addEventListener('click', () => {
+  memories.classList.add('is-open'); memories.setAttribute('aria-hidden', 'false');
+});
+memoriesClose.addEventListener('click', () => {
+  memories.classList.remove('is-open'); memories.setAttribute('aria-hidden', 'true');
+});
+
+/* ============================================================
+   TINY SOUND — a soft two-note "pop" for taps, no audio file needed
+   ============================================================ */
+let actx = null;
+function chime(f1 = 720, f2 = 900){
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime;
+    [[f1, t0], [f2, t0 + 0.08]].forEach(([f, t]) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.14, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(g); g.connect(actx.destination);
+      o.start(t); o.stop(t + 0.24);
+    });
+  } catch(e){ /* audio not available — stay silent, no big deal */ }
+}
+
+/* ============================================================
+   TAP-TO-REVEAL LOVE NOTES — tap a blossom on the tree once it's grown
+   ============================================================ */
+const LOVE_LINES = [
+  'you are so cute', 'you are a good soul',, 'you are so friendly to talk',
+  'Will you be my friend?', 'Today is special beacuse it is your day ',
+];
+let loveNoteTimer = 0;
+canvas.addEventListener('click', (e) => {
+  if (!hearts.length || treeStartT === 0) return;
+  const now = performance.now();
+  const t = (now - treeStartT) / 1000;
+  if (t < T.bloomT0) return; // only once the tree has actually started blooming
+  const r = canvas.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  let best = null, bestD = 26 * 26;
+  for (const h of hearts){
+    const d2 = (h.x - cx) * (h.x - cx) + (h.y - cy) * (h.y - cy);
+    const rad = Math.max(16, h.box * 0.5);
+    if (d2 < rad * rad && d2 < bestD){ best = h; bestD = d2; }
+  }
+  if (!best) return;
+  chime(660, 820);
+  const idx = (hearts.indexOf(best)) % LOVE_LINES.length;
+  loveNoteText.textContent = LOVE_LINES[idx];
+  loveNote.style.left = best.x + 'px';
+  loveNote.style.top  = best.y + 'px';
+  loveNote.classList.add('is-shown');
+  clearTimeout(loveNoteTimer);
+  loveNoteTimer = setTimeout(() => loveNote.classList.remove('is-shown'), 2600);
+});
+
+/* ============================================================
+   MAKE A WISH — a shooting star across the memories overlay
+   ============================================================ */
+wishBtn.addEventListener('click', () => {
+  if (wishBtn.classList.contains('is-sent')) return;
+  chime(880, 1180);
+  starEl.style.left = '92%'; starEl.style.top = '18%';
+  starEl.classList.remove('is-flying');
+  requestAnimationFrame(() => starEl.classList.add('is-flying'));
+  wishBtn.textContent = '✨ wish sent'; wishBtn.classList.add('is-sent');
+  setTimeout(() => { wishBtn.textContent = '🌠 make a wish'; wishBtn.classList.remove('is-sent'); }, 2200);
+});
+
+/* ============================================================
+   SHUFFLE COMPLIMENT CARD
+   ============================================================ */
+const COMPLIMENTS = [
+  'edit me — reason A ✎', 'edit me — reason B ✎', 'edit me — reason C ✎',
+  'edit me — reason D ✎', 'edit me — reason E ✎', 'edit me — reason F ✎',
+];
+let lastCompliment = -1;
+shuffleBtn.addEventListener('click', () => {
+  chime(700, 940);
+  let i; do { i = (Math.random() * COMPLIMENTS.length) | 0; } while (i === lastCompliment && COMPLIMENTS.length > 1);
+  lastCompliment = i;
+  gsap.fromTo(shuffleText, { opacity: 0, y: 6 }, { opacity: 1, y: 0, duration: .4 });
+  shuffleText.textContent = COMPLIMENTS[i];
+});
+
+/* ============================================================
+   SEALED ENVELOPE — opens once, types the letter out
+   ============================================================ */
+const LETTER_TEXT = "Dear Nandhini Mam, 🌸 I may not have many close friends, but talking with you every day makes me feel really special. 🥰 You are such an amazing person, and I’m truly happy that I got to know you. From now on, you are one of my favourite people because you are not just my teacher, but also a good friend to me. ❤️ You are such a simple, kind, and wonderful person, and that's what I really appreciate about you. ✨ From the very first day I saw you, one thing that caught my attention was your smile ana also I like your piercing on nose 😄 — it adds an extra touch of cuteness to your simple and beautiful look! 😊 Today is your special day! 🎂🎉 Enjoy every moment, keep smiling, and live a happy and wonderful life. 🌷✨ May all your wishes come true and may you always have plenty of reasons to smile. 💫 And finally... don't forget about this student! 😂❤️ Happy Birthday, Nandhini Mam! 🎂🥳💐 Have a beautiful and memorable day! ✨😊";
+let envelopeOpened = false;
+envelope.addEventListener('click', () => {
+  if (envelopeOpened) return;
+  envelopeOpened = true;
+  chime(520, 700);
+  envelope.classList.add('is-open');
+  setTimeout(() => {
+    letterEl.hidden = false;
+    letterEl.classList.remove('is-done');
+    letterText.textContent = '';
+    let i = 0;
+    const typer = setInterval(() => {
+      letterText.textContent = LETTER_TEXT.slice(0, i + 1);
+      i++;
+      if (i >= LETTER_TEXT.length){ clearInterval(typer); letterEl.classList.add('is-done'); }
+    }, 26);
+  }, 420);
+});
+
+
+
+/* ============================================================
+   RECORDING HOOK — the rig draws + fires after its pre-roll
+   ============================================================ */
+if (isRecord){
+  window.bdayAPI = {
+    start(){ autoFire(); },
+    replay(){ resetAll(); },
+  };
+}
