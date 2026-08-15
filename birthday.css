@@ -564,7 +564,7 @@ html.no-gate .gate{ display:none !important; }
 .note--1{ --ntilt:-3deg; } .note--2{ --ntilt:2deg; } .note--3{ --ntilt:-2deg; } .note--4{ --ntilt:3deg; }
 
 @media (max-width:520px){
-  .polaroid{ width:44%; } .note{ width:46%; }
+  .polaroid{ width:18%; } .note{ width:26%; }
 }
 
 /* ============================================================
