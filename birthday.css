@@ -1,0 +1,722 @@
+/* ============================================================
+   HAPPY BIRTHDAY — a birthday film in four acts
+   Vanilla + GSAP. One page, one continuous piece:
+     1. a beating heart you open with a tap
+     2. it falls, and bursts into a flood of rose
+     3. a kinetic wish hinges up out of that colour
+     4. a gold light blooms, and a tree grows into a heart
+   One grain + vignette lens sits over all of it.
+   ============================================================ */
+
+:root{
+  /* --- warm paper (Act 1 + the tree's dawn) --- */
+  --paper-0:  #fff6ee;
+  --paper-1:  #f9e2d2;
+  --paper-2:  #f2c9b8;
+
+  /* --- rose flood (Acts 2–3) --- */
+  --rose-deep: #a80f43;
+  --rose:      #d4235c;
+  --rose-lift: #ff5f86;
+  --wine:      #6e0a31;
+
+  /* --- accents / ink --- */
+  --gold-1:    #ffcf6a;
+  --gold-2:    #e8a23d;
+  --ink:       #7a4a55;   /* dusty rose ink        */
+  --ink-soft:  #a9808a;   /* muted eyebrow / sub   */
+  --cream:     #fff3ea;
+
+  --ease-out:  cubic-bezier(.2,.7,.2,1);
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html, body{ height:100%; }
+
+body{
+  background:#12060c;                 /* seam colour under everything */
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  cursor:auto;
+}
+
+.scene{ position:fixed; inset:0; overflow:hidden; }
+
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0;
+}
+
+/* ============================================================
+   THE TREE CANVAS (Act 4) — z0, transparent until it plays
+   ============================================================ */
+.tree{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+  display:block;
+  z-index:1;
+}
+
+/* ============================================================
+   ACT 1 — THE INVITATION
+   ============================================================ */
+.hero{
+  position:absolute; inset:0;
+  z-index:3;
+  overflow:hidden;
+}
+/* the warm field the heart sits on */
+.hero__bg{
+  position:absolute; inset:0;
+  background:
+    radial-gradient(120% 88% at 50% 24%, #fff8f1 0%, var(--paper-0) 38%, var(--paper-1) 74%, var(--paper-2) 100%);
+}
+.hero__bg::after{               /* a soft warm pool of light behind the heart */
+  content:""; position:absolute; left:50%; top:44%;
+  width:min(78vw,720px); aspect-ratio:1; transform:translate(-50%,-50%);
+  background:radial-gradient(circle, rgba(255,190,150,.55), rgba(255,150,170,.16) 46%, transparent 70%);
+  filter:blur(6px);
+}
+
+/* drifting light motes (JS fills this with a few spans) */
+.hero__motes{ position:absolute; inset:0; pointer-events:none; }
+.mote{
+  position:absolute; border-radius:50%;
+  background:radial-gradient(circle, rgba(255,236,214,.9), rgba(255,206,180,.15) 55%, transparent 72%);
+  will-change:transform, opacity;
+}
+
+.hero__eyebrow{
+  position:absolute; top:13%; left:0; right:0;
+  text-align:center;
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-style:italic; font-weight:600;
+  font-size:clamp(15px, 3.6vw, 26px);
+  letter-spacing:.06em;
+  color:#a85069;
+  text-shadow:0 1px 10px rgba(255,248,241,.9);
+  opacity:0;                          /* GSAP reveals */
+}
+
+/* ---- the target heart (GSAP animates .target on the hit → fall → burst) ---- */
+.targetWrap{
+  position:absolute; top:33%; left:0; right:0;
+  display:flex; justify-content:center;
+  transform:translateY(-50%);         /* centre at 33% — wrap is NOT animated */
+  pointer-events:none;
+}
+.target{
+  position:relative;
+  width:clamp(120px, 27vw, 208px);
+  aspect-ratio:100/92;
+  will-change:transform;
+  transform-origin:50% 60%;
+}
+.target__heart{ position:absolute; inset:0; display:block; }
+
+/* radial bloom behind the heart — swells on the beat */
+.heart__glow{
+  position:absolute; left:50%; top:52%;
+  width:230%; aspect-ratio:1; transform:translate(-50%,-50%) scale(1);
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,120,150,.55), rgba(255,90,130,.18) 42%, transparent 68%);
+  filter:blur(4px);
+  pointer-events:none;
+  will-change:transform, opacity;
+}
+.heart__svg{
+  width:100%; height:100%; display:block;
+  transform-origin:50% 60%;           /* the beat scales THIS, not the wrapper */
+  filter:
+    drop-shadow(0 10px 22px rgba(168,15,64,.34))
+    drop-shadow(0 3px 6px rgba(120,10,48,.30));
+  will-change:transform;
+}
+
+/* ---- the bow + arrow rig ----
+   Placed lower-left and rotated by JS to aim at the heart, so the shot travels
+   on a DIAGONAL. The whole rig (left/top + rotation around the grip) is set in
+   JS from measured geometry; everything below is in the rig's own space. */
+.archery{
+  position:absolute; top:0; left:0;    /* JS sets left/top so the grip anchors */
+  width:clamp(100px, 18vw, 168px);     /* smaller, daintier bow — delicate against the heart */
+  cursor:grab;
+  -webkit-tap-highlight-color:transparent;
+  touch-action:none;                   /* we own the drag gesture */
+  will-change:transform;
+}
+.archery:active{ cursor:grabbing; }
+.archery:focus-visible{ outline:none; }
+.archery:focus-visible .bow{ filter:drop-shadow(0 0 0 3px rgba(255,255,255,.85)) drop-shadow(0 10px 18px rgba(120,50,20,.4)); }
+.bow{
+  display:block; width:100%; height:auto;
+  filter:drop-shadow(0 12px 18px rgba(90,40,15,.3));
+  overflow:visible;
+}
+
+/* the aim line rides inside the rig, so it points straight at the heart */
+.aim{
+  position:absolute; left:50%; bottom:32%;
+  width:2px; height:190%; margin-left:-1px;
+  transform-origin:bottom center;
+  background:linear-gradient(0deg, rgba(255,214,150,.6) 0%, rgba(255,150,170,.22) 52%, transparent 78%);
+  opacity:0; pointer-events:none;
+}
+
+/* the arrow overlaps the bow at the nock and flies to the heart */
+.arrow{
+  position:absolute; left:0; right:0; margin-inline:auto;
+  bottom:36%;                          /* JS re-anchors the tail to the nock */
+  width:17.5%; height:auto;
+  overflow:visible;
+  will-change:transform;
+  filter:drop-shadow(0 5px 7px rgba(90,40,15,.36));
+}
+.arrow__wings{ transform-box:fill-box; transform-origin:50% 90%; }
+.arrow__wings .wingL,
+.arrow__wings .wingR{ transform-box:fill-box; }
+.wingL{ transform-origin:88% 60%; animation:flapL 2.6s ease-in-out infinite; }
+.wingR{ transform-origin:12% 60%; animation:flapR 2.6s ease-in-out infinite; }
+@keyframes flapL{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(-11deg); } }
+@keyframes flapR{ 0%,100%{ transform:rotate(0deg); } 50%{ transform:rotate(11deg); } }
+
+/* ---- the draw / release hint ---- */
+.hero__hint{
+  position:absolute; bottom:8.5%; left:0; right:0;
+  text-align:center;
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-weight:600; font-style:italic;
+  font-size:clamp(13px, 3.1vw, 19px);
+  letter-spacing:.16em; text-transform:uppercase;
+  color:#b06a7c;
+  opacity:0;                          /* GSAP reveals */
+}
+.hero__ring{ display:none; }
+
+/* ============================================================
+   ACT 2 — THE FLOOD (the burst circle)
+   ============================================================ */
+.flood{
+  position:absolute; left:50%; top:50%;
+  width:140px; height:140px; margin:-70px 0 0 -70px;
+  border-radius:50%;
+  background:radial-gradient(circle at 40% 34%, var(--rose-lift), var(--rose) 46%, var(--rose-deep) 100%);
+  z-index:5;
+  opacity:0; transform:scale(.001);
+  will-change:transform, opacity;
+  pointer-events:none;
+}
+
+/* ============================================================
+   ACT 3 — THE WISH FIELD (rose world + kinetic type)
+   ============================================================ */
+.field{
+  position:absolute; inset:0;
+  z-index:4;                          /* below the flood; revealed once it covers */
+  opacity:0;
+  /* purely decorative — must never intercept the tap on the heart beneath it.
+     An opacity:0 element is still hit-testable, so without this the invisible
+     field (z4, above the hero z3) swallows every Act-1 tap. */
+  pointer-events:none;
+  overflow:hidden;
+  background:
+    radial-gradient(120% 100% at 50% 8%, #d5265f 0%, var(--rose) 42%, var(--rose-deep) 78%, var(--wine) 100%);
+  color:#fff;
+}
+.blob{
+  position:absolute; border-radius:50%;
+  filter:blur(46px); opacity:0;
+  mix-blend-mode:screen;
+  will-change:transform, opacity;
+}
+.blob--1{ width:58vmax; height:58vmax; left:-18vmax; top:-16vmax;
+  background:radial-gradient(circle, rgba(255,130,160,.9), transparent 62%); }
+.blob--2{ width:46vmax; height:46vmax; right:-14vmax; top:22vmax;
+  background:radial-gradient(circle, rgba(255,90,120,.75), transparent 64%); }
+.blob--3{ width:52vmax; height:52vmax; left:24vmax; bottom:-22vmax;
+  background:radial-gradient(circle, rgba(180,20,70,.8), transparent 66%); }
+
+/* faint grid — a hair of parallax gives the flood depth, not flatness */
+.fgrid{
+  position:absolute; inset:-6%;
+  background-image:
+    linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px);
+  background-size:clamp(38px,7vw,74px) clamp(38px,7vw,74px);
+  will-change:transform;
+}
+.fvignette{
+  position:absolute; inset:0;
+  background:radial-gradient(128% 96% at 50% 44%, transparent 50%, rgba(70,6,28,.5) 100%);
+}
+
+/* the camera — everything on the flood rides a slow continuous push */
+.camera{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  gap:clamp(4px,1.2vh,12px);
+  padding:0 6vw; text-align:center;
+  will-change:transform;
+}
+.kEyebrow{
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-style:italic; font-weight:500;
+  font-size:clamp(15px, 3.6vw, 27px);
+  letter-spacing:.08em;
+  color:#ffd7c8;
+  opacity:0; transform:translateY(10px);
+  margin-bottom:clamp(2px,1vh,10px);
+}
+
+.headline{ font-family:"Fraunces", Georgia, serif; line-height:.92; }
+.hl__line{ display:block; }
+/* the mask each headline word hinges out of. Padded to clear ascenders +
+   descenders so glyphs never peek past the clip edge when parked. */
+.mask{
+  display:inline-block; overflow:hidden;
+  padding:.14em .06em;
+  margin:-.14em -.06em;
+}
+.hl__word{
+  display:inline-block;
+  font-weight:900;
+  font-size:clamp(52px, 15vw, 168px);
+  letter-spacing:-.02em;
+  color:#fff6f1;
+  text-shadow:0 6px 34px rgba(60,4,24,.34), 0 2px 3px rgba(90,8,36,.42);
+}
+/* each glyph hinges up on its own bottom edge, under its own perspective */
+.hl__ch{ display:inline-block; will-change:transform; }
+
+/* gold hand-drawn underline under the second word */
+.uline{
+  width:clamp(150px, 40vw, 380px); height:auto;
+  margin-top:clamp(4px,1.4vh,14px);
+  color:var(--gold-1);
+  filter:drop-shadow(0 2px 8px rgba(255,180,90,.5));
+}
+.kSub{
+  margin-top:clamp(12px,2.4vh,26px);
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-weight:500; font-style:italic;
+  font-size:clamp(14px, 3.4vw, 24px);
+  letter-spacing:.05em;
+  color:#ffdfd2;
+  opacity:0; transform:translateY(10px);
+}
+
+/* cinema bars — closed = black, they open as the wish lands */
+.bar{
+  position:absolute; left:0; right:0; height:16vh;
+  background:#12040b; z-index:3; will-change:transform; pointer-events:none;
+}
+.bar--top{ top:0; }
+.bar--bot{ bottom:0; }
+
+/* ============================================================
+   THE HANDOFF BLOOM (rose wish → dawn of the tree)
+   ============================================================ */
+.bloom{
+  position:absolute; left:50%; top:50%;
+  width:60px; height:60px; margin:-30px 0 0 -30px;
+  border-radius:50%;
+  background:radial-gradient(circle, #fff 0%, #fff2d6 30%, rgba(255,214,150,.85) 55%, rgba(255,190,150,0) 74%);
+  z-index:8; opacity:0; transform:scale(.001);
+  will-change:transform, opacity; pointer-events:none;
+}
+
+/* ============================================================
+   ACT 4 — THE HAND-LETTERED WISH (over the tree)
+   ============================================================ */
+.wish{
+  position:absolute;
+  left:5.5%; bottom:10%;
+  max-width:46%;
+  z-index:6;
+  pointer-events:none;
+  color:var(--ink);
+  /* hard gate: wish__hero keeps opacity:1 (its clip-path drives the write-on),
+     so without this its clipped sliver + drop-shadow would leak into Acts 1–3. */
+  visibility:hidden;
+}
+.wish.is-in{ visibility:visible; }
+.wish::before{
+  content:""; position:absolute; inset:-18% -24% -24% -16%;
+  background:radial-gradient(84% 98% at 34% 52%, rgba(255,250,243,.94), rgba(255,250,243,.6) 48%, rgba(255,250,243,0) 80%);
+  z-index:-1; opacity:0; transition:opacity 1s ease;
+}
+.wish.is-in::before{ opacity:1; }
+.wish__eyebrow{
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-style:italic; font-weight:600;
+  font-size:clamp(13px, 3.2vw, 24px);
+  letter-spacing:.05em; color:#9c4f63;
+  text-shadow:0 1px 2px #fff8f1, 0 0 8px rgba(255,248,241,.95);
+}
+.wish__heroWrap{ position:relative; display:inline-block; }
+.wish__heroWrap::before{
+  content:""; position:absolute; left:-12%; right:-12%; top:-26%; bottom:-22%;
+  background:radial-gradient(60% 70% at 46% 52%, rgba(255,214,168,.5), rgba(255,150,150,.2) 52%, transparent 74%);
+  filter:blur(14px); z-index:-1; opacity:0; pointer-events:none;
+}
+.wish__heroWrap::after{
+  content:"\2726";
+  position:absolute; right:-1%; top:-14%;
+  font-size:clamp(15px, 3.6vw, 32px);
+  color:#ffe1a0; text-shadow:0 0 12px rgba(255,205,120,.95);
+  opacity:0; pointer-events:none;
+}
+.wish__hero{
+  font-family:"Great Vibes", cursive; font-weight:400;
+  font-size:clamp(40px, 9.6vw, 86px);
+  line-height:.98; margin:-.02em 0 .06em;
+  /* one consistent rose, top-lit — every letter reads the same (no per-glyph
+     colour shift, which is what made the old rose→gold version look messy).
+     Deep enough to hold up against the tree's bright bloom behind it. */
+  background:linear-gradient(180deg, #e85a83 0%, #c41f52 50%, #9c0f42 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  /* a crisp cream edge for legibility over the tree + one soft drop */
+  filter:
+    drop-shadow(0 1px 1px rgba(255,252,248,.98))
+    drop-shadow(0 2px 6px rgba(130,18,55,.45));
+  clip-path:inset(0 100% -28% -10%);
+  transform-origin:8% 60%;             /* breathe from the start of the line */
+}
+.wish__rule{
+  display:block; width:clamp(46px, 13vw, 110px); height:2px;
+  margin:.12em 0 .48em;
+  background:linear-gradient(90deg, var(--gold-2), rgba(232,162,61,0));
+  box-shadow:0 0 8px rgba(255,247,240,.9);
+  transform-origin:left center;
+}
+.wish__sub{
+  font-family:"Cormorant Garamond", Georgia, serif;
+  font-weight:600; font-size:clamp(12px, 2.9vw, 20px);
+  letter-spacing:.03em; color:#6e3f4a;
+  text-shadow:0 1px 2px #fff8f1, 0 0 8px rgba(255,248,241,.98);
+}
+.wish__eyebrow, .wish__rule, .wish__sub{
+  opacity:0; transform:translateY(12px); filter:blur(5px);
+  transition:opacity .8s ease, transform .9s var(--ease-out), filter .8s ease;
+}
+.wish__rule{ transform:translateY(12px) scaleX(.3); }
+.wish.is-in .wish__eyebrow,
+.wish.is-in .wish__sub{ opacity:1; transform:translateY(0); filter:blur(0); }
+.wish.is-in .wish__rule{ opacity:1; transform:translateY(0) scaleX(1); }
+.wish.is-in .wish__rule{ transition-delay:1.35s; }
+.wish.is-in .wish__sub{  transition-delay:1.55s; }
+.wish.is-in .wish__hero{
+  animation:write 1.2s cubic-bezier(.62,.04,.24,1) .35s forwards,
+            wishBreath 4s ease-in-out 1.9s infinite;
+}
+/* a gentle living breath — transform only, so it can never wash the fill out */
+@keyframes wishBreath{ 0%,100%{ transform:scale(1); } 50%{ transform:scale(1.02); } }
+.wish.is-in .wish__heroWrap::before{ animation:hlin .8s ease .3s forwards, hlpulse 3.4s ease-in-out 1.7s infinite; }
+.wish.is-in .wish__heroWrap::after{ animation:twk 2.6s ease-in-out 1.6s infinite; }
+@keyframes write{ from{ clip-path:inset(0 100% -28% -10%); } to{ clip-path:inset(0 -10% -28% -10%); } }
+@keyframes sheen{ 0%,18%{ background-position:0% 50%; } 60%,100%{ background-position:100% 50%; } }
+@keyframes hlin{ from{ opacity:0; transform:scale(.86); } to{ opacity:.92; transform:scale(1); } }
+@keyframes hlpulse{ 0%,100%{ opacity:.72; } 50%{ opacity:1; } }
+@keyframes twk{ 0%,100%{ opacity:0; transform:scale(.5) rotate(-12deg); } 45%{ opacity:1; transform:scale(1.05) rotate(16deg); } }
+
+/* ============================================================
+   REPLAY
+   ============================================================ */
+.replay{
+  position:absolute; right:20px; bottom:18px; z-index:7;
+  display:inline-flex; align-items:center; gap:7px;
+  padding:9px 15px 9px 12px; border-radius:999px;
+  font:600 12.5px/1 "Cormorant Garamond", Georgia, serif; letter-spacing:.12em; text-transform:uppercase;
+  color:#8a4a5a; background:rgba(255,248,242,.72);
+  border:1px solid rgba(150,60,80,.18);
+  box-shadow:0 6px 20px -8px rgba(120,20,50,.4);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  cursor:pointer; opacity:0; transform:translateY(8px);
+  transition:opacity .5s ease, transform .5s var(--ease-out), background .3s ease;
+}
+.replay.is-shown{ opacity:1; transform:translateY(0); }
+.replay:hover{ background:rgba(255,252,248,.92); }
+.replay svg{ opacity:.8; }
+
+/* ============================================================
+   GATE — ribbon-tied invite, opened with a tap (skipped on reduced motion)
+   ============================================================ */
+.gate{
+  position:absolute; inset:0; z-index:20;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:16px; cursor:pointer;
+  background:radial-gradient(120% 90% at 50% 40%, #fff8f1 0%, var(--paper-0) 40%, var(--paper-2) 100%);
+  transition:opacity .55s ease, transform .55s var(--ease-out), visibility 0s .55s;
+}
+.gate__box{ position:relative; width:min(58vw,220px); aspect-ratio:1; }
+.gate__box::before{
+  content:""; position:absolute; inset:0; border-radius:18px;
+  background:linear-gradient(155deg,#fff9f2,var(--paper-1) 60%,var(--paper-2));
+  box-shadow:0 18px 40px -18px rgba(120,20,50,.4), inset 0 0 0 1px rgba(255,255,255,.6);
+}
+.gate__ribbonV, .gate__ribbonH{ position:absolute; background:linear-gradient(180deg,var(--rose-lift),var(--rose)); }
+.gate__ribbonV{ left:50%; top:0; bottom:0; width:16%; transform:translateX(-50%); box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+.gate__ribbonH{ top:50%; left:0; right:0; height:16%; transform:translateY(-50%); box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+.gate__bow{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:56%; filter:drop-shadow(0 6px 14px rgba(120,10,40,.35));
+  animation:gateBreath 2.6s ease-in-out infinite;
+}
+@keyframes gateBreath{ 0%,100%{ transform:translate(-50%,-50%) scale(1); } 50%{ transform:translate(-50%,-50%) scale(1.06); } }
+.gate__label{
+  font-family:"Cormorant Garamond", Georgia, serif; font-weight:600;
+  letter-spacing:.14em; text-transform:uppercase; font-size:12.5px;
+  color:var(--ink-soft);
+}
+.gate.is-open{ opacity:0; transform:scale(1.06); visibility:hidden; pointer-events:none; }
+html.no-gate .gate{ display:none !important; }
+
+/* ============================================================
+   MUSIC TOGGLE + "OUR MEMORIES" BUTTON — sit beside Replay
+   ============================================================ */
+.musicToggle, .memoriesBtn{
+  position:absolute; z-index:7;
+  display:inline-flex; align-items:center; gap:6px;
+  border-radius:999px; cursor:pointer;
+  color:#8a4a5a; background:rgba(255,248,242,.72);
+  border:1px solid rgba(150,60,80,.18);
+  box-shadow:0 6px 20px -8px rgba(120,20,50,.4);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  opacity:0; transform:translateY(8px);
+  transition:opacity .5s ease, transform .5s var(--ease-out), background .3s ease;
+}
+.musicToggle{ left:20px; bottom:18px; width:38px; height:38px; justify-content:center; }
+.memoriesBtn{
+  right:20px; bottom:64px; padding:9px 15px 9px 12px;
+  font:600 12.5px/1 "Cormorant Garamond", Georgia, serif; letter-spacing:.1em; text-transform:uppercase;
+}
+.musicToggle.is-shown, .memoriesBtn.is-shown{ opacity:1; transform:translateY(0); }
+.musicToggle:hover, .memoriesBtn:hover{ background:rgba(255,252,248,.92); }
+.musicToggle[aria-pressed="true"] .musicToggle__on{ display:inline; }
+.musicToggle[aria-pressed="true"] .musicToggle__off{ display:none; }
+.musicToggle[aria-pressed="false"] .musicToggle__on{ display:none; }
+.musicToggle[aria-pressed="false"] .musicToggle__off{ display:inline; }
+
+/* ============================================================
+   ACT 5 — MEMORY LANE + MESSAGE WALL (overlay)
+   ============================================================ */
+.memories{
+  position:absolute; inset:0; z-index:15;
+  background:linear-gradient(160deg, var(--paper-0), var(--paper-1) 55%, var(--paper-2));
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .5s ease, visibility 0s .5s;
+}
+.memories.is-open{ opacity:1; visibility:visible; pointer-events:auto; transition:opacity .5s ease; }
+.memories__inner{ position:relative; max-width:960px; margin:0 auto; padding:64px 22px 80px; }
+.memories__close{
+  position:fixed; top:16px; right:18px; z-index:2;
+  width:36px; height:36px; border-radius:50%; border:1px solid rgba(150,60,80,.2);
+  background:rgba(255,248,242,.85); color:#8a4a5a; font-size:15px; cursor:pointer;
+  box-shadow:0 6px 16px -8px rgba(120,20,50,.4);
+}
+.memories__eyebrow{
+  text-align:center; font-family:"Cormorant Garamond", Georgia, serif; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; font-size:12.5px; color:var(--ink-soft);
+  margin-bottom:6px;
+}
+.memories__eyebrow--2{ margin-top:56px; }
+.memories__title{
+  text-align:center; font-family:"Great Vibes", cursive; font-weight:400;
+  font-size:clamp(34px,7vw,56px); color:var(--rose-deep); margin-bottom:38px;
+}
+.polaroids{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:22px 18px;
+}
+.polaroid{
+  width:170px; padding:12px 12px 16px; background:#fffdf9; border-radius:4px;
+  box-shadow:0 10px 22px -10px rgba(80,20,40,.35), 0 1px 0 rgba(255,255,255,.6) inset;
+  transform:rotate(var(--tilt,0deg)); transition:transform .25s var(--ease-out);
+}
+.polaroid:hover{ transform:rotate(0deg) scale(1.04); }
+.polaroid--1{ --tilt:-4deg; } .polaroid--2{ --tilt:3deg; margin-top:26px; }
+.polaroid--3{ --tilt:-2deg; } .polaroid--4{ --tilt:5deg; margin-top:18px; }
+.polaroid--5{ --tilt:-5deg; }
+.polaroid__img{
+  width:100%; aspect-ratio:1/1.02; border-radius:2px; margin-bottom:10px;
+  background:linear-gradient(155deg,var(--paper-1),var(--paper-2));
+  display:flex; align-items:center; justify-content:center;
+  background-size:cover; background-position:center;
+}
+.polaroid__img::after{
+  content:"♡"; font-size:26px; color:rgba(168,15,67,.35);
+}
+.polaroid figcaption{
+  font-family:"Great Vibes", cursive; font-size:16px; text-align:center; color:#8a5560;
+}
+.notes{
+  display:flex; flex-wrap:wrap; justify-content:center; gap:16px; margin-top:26px;
+}
+.note{
+  width:190px; min-height:120px; padding:16px; border-radius:3px;
+  background:linear-gradient(160deg,#fff6e0,#ffe9b8);
+  box-shadow:0 10px 20px -10px rgba(80,20,40,.3);
+  transform:rotate(var(--ntilt,0deg));
+  font-family:"Cormorant Garamond", Georgia, serif; font-weight:600; font-size:14.5px;
+  color:#6e4a2a; line-height:1.4;
+}
+.note--1{ --ntilt:-3deg; } .note--2{ --ntilt:2deg; } .note--3{ --ntilt:-2deg; } .note--4{ --ntilt:3deg; }
+
+@media (max-width:520px){
+  .polaroid{ width:44%; } .note{ width:46%; }
+}
+
+/* ============================================================
+   GATE EXTRAS — wrapping-paper texture, shine sweep, sparkles
+   ============================================================ */
+.gate__paper{
+  position:absolute; inset:0; border-radius:18px;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(216,35,92,.14) 0 3px, transparent 3px),
+    radial-gradient(circle at 60% 55%, rgba(232,162,61,.16) 0 2.4px, transparent 2.4px),
+    radial-gradient(circle at 85% 15%, rgba(216,35,92,.1) 0 2px, transparent 2px);
+  background-size:34px 34px, 26px 26px, 40px 40px;
+}
+.gate__shine{ position:absolute; inset:0; border-radius:18px; overflow:hidden; pointer-events:none; }
+.gate__shine::after{
+  content:""; position:absolute; top:-40%; left:-60%; width:40%; height:180%;
+  background:linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+  animation:gateShine 3.2s ease-in-out infinite;
+}
+@keyframes gateShine{ 0%{ transform:translateX(0) rotate(8deg); } 100%{ transform:translateX(340%) rotate(8deg); } }
+.gate__dots span{ animation:gateDot 1.4s ease-in-out infinite; opacity:.3; }
+.gate__dots span:nth-child(2){ animation-delay:.18s; } .gate__dots span:nth-child(3){ animation-delay:.36s; }
+@keyframes gateDot{ 0%,60%,100%{ opacity:.25; } 30%{ opacity:1; } }
+.gate__sparkles{ position:absolute; inset:0; pointer-events:none; }
+.gate__sparkles span{
+  position:absolute; width:5px; height:5px; border-radius:50%;
+  background:radial-gradient(circle, #ffe4a3, transparent);
+  animation:gateSparkle 2.8s ease-in-out infinite;
+}
+.gate__sparkles span:nth-child(1){ top:18%; left:22%; animation-delay:.1s; }
+.gate__sparkles span:nth-child(2){ top:30%; left:76%; animation-delay:.6s; }
+.gate__sparkles span:nth-child(3){ top:70%; left:18%; animation-delay:1.1s; }
+.gate__sparkles span:nth-child(4){ top:76%; left:80%; animation-delay:1.6s; }
+.gate__sparkles span:nth-child(5){ top:12%; left:52%; animation-delay:.3s; }
+.gate__sparkles span:nth-child(6){ top:85%; left:50%; animation-delay:2s; }
+@keyframes gateSparkle{ 0%,100%{ opacity:0; transform:scale(.4); } 50%{ opacity:1; transform:scale(1); } }
+
+/* ============================================================
+   LOVE NOTES ON THE TREE + MAKE-A-WISH STAR
+   ============================================================ */
+.loveHint{
+  font-family:"Cormorant Garamond", Georgia, serif; font-weight:600; font-size:12px;
+  letter-spacing:.12em; text-transform:uppercase; color:rgba(138,74,90,.65);
+  margin-top:.6em; opacity:0; transition:opacity 1s ease 2.4s;
+  animation:loveHintPulse 3s ease-in-out 2.4s infinite;
+}
+.wish.is-in .loveHint{ opacity:1; }
+@keyframes loveHintPulse{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+.loveNote{
+  position:absolute; z-index:8; max-width:190px; padding:9px 13px; border-radius:12px;
+  background:rgba(255,250,244,.95); color:#7a3a4a; text-align:center;
+  font-family:"Cormorant Garamond", Georgia, serif; font-weight:600; font-size:13.5px;
+  box-shadow:0 8px 20px -8px rgba(120,20,50,.4); border:1px solid rgba(150,60,80,.15);
+  opacity:0; transform:translate(-50%,-100%) scale(.9); pointer-events:none;
+  transition:opacity .35s ease, transform .35s var(--ease-out);
+}
+.loveNote.is-shown{ opacity:1; transform:translate(-50%,-115%) scale(1); }
+.star{
+  position:absolute; z-index:8; width:3px; height:3px; border-radius:50%;
+  background:#fff8e8; box-shadow:0 0 10px 3px rgba(255,230,170,.9);
+  opacity:0; pointer-events:none;
+}
+.star.is-flying{ animation:starFly 1.3s ease-out; }
+.star::after{
+  content:""; position:absolute; right:2px; top:1px; width:70px; height:1.4px;
+  background:linear-gradient(90deg, rgba(255,240,200,.9), transparent);
+  transform-origin:right center;
+}
+@keyframes starFly{
+  0%{ opacity:0; transform:translate(0,0) scale(.6) rotate(-35deg); }
+  10%{ opacity:1; } 85%{ opacity:1; }
+  100%{ opacity:0; transform:translate(-58vw,42vh) scale(1) rotate(-35deg); }
+}
+.wishBtn{
+  display:block; margin:34px auto 0; padding:10px 20px; border-radius:999px; cursor:pointer;
+  border:1px solid rgba(150,60,80,.22); background:rgba(255,248,242,.85); color:#8a4a5a;
+  font:600 13px/1 "Cormorant Garamond", Georgia, serif; letter-spacing:.08em;
+  box-shadow:0 8px 20px -10px rgba(120,20,50,.35); transition:transform .2s ease, background .2s ease;
+}
+.wishBtn:hover{ transform:translateY(-2px); background:rgba(255,252,248,.98); }
+.wishBtn.is-sent{ pointer-events:none; opacity:.7; }
+
+/* ============================================================
+   SHUFFLE COMPLIMENT CARD + SEALED ENVELOPE LETTER
+   ============================================================ */
+.shuffleCard{
+  max-width:280px; margin:20px auto 0; padding:16px; border-radius:8px; text-align:center;
+  background:rgba(255,255,255,.5); border:1px dashed rgba(168,15,67,.28);
+}
+.shuffleCard p{
+  font-family:"Great Vibes", cursive; font-size:19px; color:#8a3a4a; margin-bottom:10px; min-height:1.4em;
+}
+.shuffleCard button{
+  border:none; border-radius:999px; padding:7px 14px; cursor:pointer;
+  background:linear-gradient(135deg,var(--gold-1),var(--gold-2)); color:#5a3410;
+  font:600 12px/1 "Cormorant Garamond", Georgia, serif; letter-spacing:.06em;
+}
+.envelope{ width:200px; height:130px; margin:0 auto; position:relative; cursor:pointer; transition:transform .2s ease; }
+.envelope:hover{ transform:translateY(-2px); }
+.envelope__body{
+  position:absolute; inset:0; border-radius:6px;
+  background:linear-gradient(160deg,#fff6e0,#ffe0c2);
+  box-shadow:0 12px 26px -12px rgba(80,20,40,.4);
+  display:flex; align-items:center; justify-content:center; flex-direction:column; gap:6px;
+}
+.envelope__seal{ font-size:22px; color:var(--rose-deep); }
+.envelope__label{
+  font-family:"Cormorant Garamond", Georgia, serif; font-weight:600; letter-spacing:.14em;
+  text-transform:uppercase; font-size:10.5px; color:#8a5a3a;
+}
+.envelope__flap{
+  position:absolute; top:0; left:0; right:0; height:65px;
+  background:linear-gradient(160deg,#ffe9c8,#ffcf9a);
+  clip-path:polygon(0 0, 100% 0, 50% 68%);
+  transform-origin:top center; transition:transform .5s var(--ease-out);
+}
+.envelope.is-open .envelope__flap{ transform:rotateX(180deg); }
+.envelope.is-open .envelope__body{ opacity:0; transition:opacity .3s ease .2s; }
+.letter{
+  max-width:420px; margin:26px auto 0; padding:26px 24px; border-radius:6px;
+  background:#fffaf2; box-shadow:0 14px 30px -14px rgba(80,20,40,.35);
+  font-family:"Cormorant Garamond", Georgia, serif; font-size:16px; line-height:1.7; color:#6e4a2a;
+  min-height:3em;
+}
+.letter p::after{ content:"▍"; opacity:.6; animation:letterCaret 1s steps(1) infinite; }
+.letter.is-done p::after{ content:""; }
+@keyframes letterCaret{ 50%{ opacity:0; } }
+
+/* ============================================================
+   THE LENS — grain + vignette over every act
+   ============================================================ */
+.grade{ position:absolute; inset:0; z-index:9; pointer-events:none; }
+.grade__vignette{
+  position:absolute; inset:0;
+  background:radial-gradient(125% 95% at 50% 42%, transparent 54%, rgba(60,18,30,.14) 84%, rgba(40,12,22,.3) 100%);
+  mix-blend-mode:multiply;
+}
+.grade__grain{
+  position:absolute; inset:0;
+  background:url('/textures/grain.png') repeat;
+  background-size:300px; opacity:.05; mix-blend-mode:overlay;
+}
+
+/* ============================================================
+   REDUCED MOTION — skip the film, hand over the finished tree
+   ============================================================ */
+@media (prefers-reduced-motion: reduce){
+  .gate{ display:none !important; }
+  .hero, .flood, .field, .bloom, .hero__ring{ display:none !important; }
+  .wish__eyebrow, .wish__rule, .wish__sub{ opacity:1; transform:none; filter:none; transition:none; }
+  .wish__hero{ clip-path:none; filter:drop-shadow(0 0 5px rgba(255,252,248,.98)) drop-shadow(0 2px 4px rgba(130,18,55,.5)) drop-shadow(0 4px 14px rgba(150,28,70,.32)); }
+  .wish.is-in .wish__hero{ animation:none; }
+  .wish.is-in .wish__heroWrap::before{ animation:none; opacity:.9; }
+  .wish.is-in .wish__heroWrap::after{ animation:none; opacity:0; }
+}
